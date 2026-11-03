@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>DYMO 550 Turbo Chromebook WebUSB Printer</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 640px; margin: 30px auto; padding: 20px; background: #f8fafc; color: #1e293b; }
+    .card { background: white; padding: 24px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
+    h2 { margin-top: 0; }
+    label { display: block; font-weight: 600; margin-top: 14px; margin-bottom: 6px; font-size: 14px; }
+    select, textarea, input { width: 100%; padding: 10px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 15px; box-sizing: border-box; }
+    canvas { border: 2px dashed #94a3b8; background: white; display: block; margin: 16px auto; max-width: 100%; height: auto; }
+    .btn-row { display: flex; gap: 12px; margin-top: 18px; }
+    button { flex: 1; padding: 12px 16px; font-size: 15px; font-weight: 600; border: none; border-radius: 8px; cursor: pointer; }
+    .btn-primary { background: #2563eb; color: white; }
+    .btn-primary:hover { background: #1d4ed8; }
+    .btn-secondary { background: #e2e8f0; color: #1e293b; }
+    #status { margin-top: 14px; font-size: 14px; padding: 10px; border-radius: 6px; background: #f1f5f9; white-space: pre-wrap; }
+  </style>
+</head>
+<body>
+
+<div class="card">
+  <h2>🖨️ DYMO 550 Turbo WebUSB Printer</h2>
+  <p style="font-size: 14px; color: #475569;">
+    Make sure the printer is <b>Removed</b> from Chromebook Saved Printers so Chrome can access the USB port directly.
+  </p>
+
+  <label for="labelSize">1. Select Loaded DYMO Label Size (300 DPI):</label>
+  <select id="labelSize">
+    <option value="30252" data-w="336" data-h="1050" data-media="ADDRESS_STANDARD">30252 / 30320 - Standard Address (1.125" × 3.5")</option>
+    <option value="30321" data-w="420" data-h="1050" data-media="ADDRESS_LARGE">30321 - Large Address (1.4" × 3.5")</option>
+    <option value="30323" data-w="636" data-h="1200" data-media="SHIPPING">30323 - Shipping Label (2.125" × 4")</option>
+    <option value="30256" data-w="672" data-h="1200" data-media="SHIPPING">30256 - Large Shipping (2.31" × 4")</option>
+    <option value="30336" data-w="300" data-h="636" data-media="MULTIPURPOSE_SMALL">30336 - Small Multipurpose (1" × 2.125")</option>
+    <option value="30334" data-w="672" data-h="375" data-media="MULTIPURPOSE_MEDIUM">30334 - Medium Multipurpose (2.25" × 1.25")</option>
+  </select>
+
+  <label for="labelText">2. Label Text (or upload a PNG/JPG image below):</label>
+  <textarea id="labelText" rows="4">John Smith
+123 Main Street
+Fort Worth, TX 76102</textarea>
+
+  <div style="display:flex; gap:12px;">
+    <div style="flex:1;">
+      <label for="fontSize">Font Size (px):</label>
+      <input type="number" id="fontSize" value="44" min="14" max="150">
+    </div>
+    <div style="flex:1;">
+      <label for="imgUpload">Or Upload Label Image:</label>
+      <input type="file" id="imgUpload" accept="image/*">
+    </div>
+  </div>
+
+  <label>Label Preview (Rotated automatically for feed direction):</label>
+  <canvas id="previewCanvas" width="1050" height="336"></canvas>
+
+  <div class="btn-row">
+    <button class="btn-secondary" id="feedBtn">⏭️ Test Form Feed</button>
+    <button class="btn-primary" id="printBtn">🖨️ Connect & Print Label</button>
+  </div>
+
+  <div id="status">Status: Ready. Click "Connect & Print Label" to pair your DYMO 550 Turbo.</div>
+</div>
+
+<script type="module">
+  import { requestPrinter } from 'https://esm.sh/@thermal-label/labelwriter-web';
+  import { MEDIA } from 'https://esm.sh/@thermal-label/labelwriter-core';
+
+  const sizeSelect = document.getElementById('labelSize');
+  const textInput = document.getElementById('labelText');
+  const fontSizeInput = document.getElementById('fontSize');
+  const imgUpload = document.getElementById('imgUpload');
+  const canvas = document.getElementById('previewCanvas');
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  const statusEl = document.getElementById('status');
+
+  let uploadedImg = null;
+
+  function setStatus(msg) {
+    statusEl.textContent = 'Status: ' + msg;
+  }
+
+  function renderPreview() {
+    const opt = sizeSelect.options[sizeSelect.selectedIndex];
+    const feedW = parseInt(opt.dataset.w, 10); // Width across printhead
+    const feedH = parseInt(opt.dataset.h, 10); // Length along feed
+
+    // Display horizontally for easy reading if height > width
+    const isLandscapeView = feedH > feedW;
+    canvas.width = isLandscapeView ? feedH : feedW;
+    canvas.height = isLandscapeView ? feedW : feedH;
+
+    ctx.fillStyle = '#FFFFFF';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    if (uploadedImg) {
+      ctx.drawImage(uploadedImg, 0, 0, canvas.width, canvas.height);
+      return;
+    }
+
+    ctx.fillStyle = '#000000';
+    const fSize = parseInt(fontSizeInput.value, 10) || 44;
+    ctx.font = `bold ${fSize}px sans-serif`;
+    ctx.textBaseline = 'top';
+
+    const lines = textInput.value.split('\n');
+    const pad = 28;
+    lines.forEach((line, i) => {
+      ctx.fillText(line, pad, pad + i * (fSize * 1.25));
+    });
+  }
+
+  sizeSelect.addEventListener('change', () => { uploadedImg = null; renderPreview(); });
+  textInput.addEventListener('input', () => { uploadedImg = null; renderPreview(); });
+  fontSizeInput.addEventListener('input', renderPreview);
+
+  imgUpload.addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const img = new Image();
+    img.onload = () => { uploadedImg = img; renderPreview(); };
+    img.src = URL.createObjectURL(file);
+  });
+
+  renderPreview();
+
+  // Prepare vertically oriented RGBA buffer matching the 57mm printhead feed axis
+  function getPrintHeadImageData() {
+    const opt = sizeSelect.options[sizeSelect.selectedIndex];
+    const headW = parseInt(opt.dataset.w, 10);
+    const feedLen = parseInt(opt.dataset.h, 10);
+
+    const offscreen = document.createElement('canvas');
+    offscreen.width = headW;
+    offscreen.height = feedLen;
+    const oCtx = offscreen.getContext('2d');
+
+    oCtx.fillStyle = '#FFFFFF';
+    oCtx.fillRect(0, 0, headW, feedLen);
+
+    if (feedLen > headW) {
+      // Rotate landscape preview 90 deg clockwise to feed lengthwise
+      oCtx.translate(headW, 0);
+      oCtx.rotate(Math.PI / 2);
+      oCtx.drawImage(canvas, 0, 0);
+    } else {
+      oCtx.drawImage(canvas, 0, 0);
+    }
+
+    const imgData = oCtx.getImageData(0, 0, headW, feedLen);
+    return { width: headW, height: feedLen, data: imgData.data };
+  }
+
+  // Fallback raw WebUSB Form Feed (0x1B 0x45) to verify USB connection immediately
+  document.getElementById('feedBtn').addEventListener('click', async () => {
+    try {
+      setStatus('Requesting DYMO USB device...');
+      const device = await navigator.usb.requestDevice({ filters: [{ vendorId: 0x0922 }] });
+      await device.open();
+      if (device.configuration === null) await device.selectConfiguration(1);
+      const iface = device.configuration.interfaces[0];
+      await device.claimInterface(iface.interfaceNumber);
+      const outEp = iface.alternate.endpoints.find(e => e.direction === 'out');
+      // 1B 45 is the official DYMO 550 Technical Reference Form Feed command
+      await device.transferOut(outEp.endpointNumber, new Uint8Array([0x1B, 0x45]));
+      await device.close();
+      setStatus('Success! Sent Form Feed command (0x1B 0x45) to printer.');
+    } catch (err) {
+      setStatus('USB Error: ' + err.message + '\n(Did you remove the printer from Chromebook Saved Printers first?)');
+    }
+  });
+
+  // Full DYMO 550 Series Raster Print via @thermal-label/labelwriter-web
+  document.getElementById('printBtn').addEventListener('click', async () => {
+    let printer;
+    try {
+      setStatus('Connecting to DYMO 550 Turbo via WebUSB...');
+      printer = await requestPrinter();
+      const opt = sizeSelect.options[sizeSelect.selectedIndex];
+      const mediaKey = opt.dataset.media;
+      const mediaSpec = (MEDIA && MEDIA[mediaKey]) ? MEDIA[mediaKey] : undefined;
+
+      setStatus('Encoding LW5xx raster data & printing...');
+      const rawImage = getPrintHeadImageData();
+      await printer.print(rawImage, mediaSpec);
+      setStatus('✅ Label printed! Ready for next label.');
+    } catch (err) {
+      setStatus('Print Error: ' + err.message + '\nMake sure the printer is removed from ChromeOS Printer Settings.');
+    } finally {
+      if (printer) await printer.close();
+    }
+  });
+</script>
+</body>
+</html>
